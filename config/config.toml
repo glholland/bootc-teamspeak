@@ -1,0 +1,52 @@
+# TeamSpeak Bootc Image Build Configuration
+# This config uses Anaconda kickstart for automated ISO installation
+# User configuration is handled in the kickstart script below
+
+# Anaconda kickstart configuration for automated installation
+[customizations.installer.kickstart]
+contents = """
+# Automated TeamSpeak Bootc Installation
+user --name=fedora --password=password --groups=wheel --homedir=/var/home/fedora --shell=/bin/bash
+sshkey --username=fedora "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA1KEXIhsrOp8nwvFY2FfCciJa2zOAQ+xSqay/41GN8j teamspeak-bootc-admin"
+text --non-interactive
+lang en_US.UTF-8
+keyboard us
+timezone America/New_York --utc
+
+# Network configuration
+network --bootproto=dhcp --device=link --activate --onboot=on --hostname=teamspeak-server
+
+# Storage configuration - use first available disk
+ignoredisk --only-use=sda
+bootloader --location=boot --boot-drive=sda
+zerombr
+clearpart --all --initlabel --disklabel=gpt --drives=sda
+
+# Create partitions
+part /boot/efi --fstype=efi --size=512 --ondisk=sda
+part /boot --fstype=ext4 --size=1024 --ondisk=sda
+part pv.01 --size=1 --grow --ondisk=sda
+
+# LVM configuration
+volgroup system pv.01
+logvol / --vgname=system --name=root --size=8192 --grow --fstype=ext4
+logvol swap --vgname=system --name=swap --size=2048
+
+# Root password (will be disabled in favor of user account)
+rootpw --lock
+
+# User account configuration with SSH key
+
+# Services and basic firewall
+services --enabled=sshd,qemu-guest-agent,teamspeak
+firewall --enabled --service=ssh
+firewall --port=9987:udp,10011:tcp,30033:tcp
+
+# Complete installation and reboot
+reboot --eject
+"""
+
+# Filesystem customizations
+[[customizations.filesystem]]
+mountpoint = "/var/lib/teamspeak"
+minsize = "10 GiB"
