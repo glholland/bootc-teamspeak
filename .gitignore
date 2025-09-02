@@ -1,0 +1,15 @@
+# Ignore build and output artifacts
+output/
+keys/teamspeak-bootc-admin*
+*.iso
+*.key
+*.key.pub
+*.log
+*.tmp
+*.bak
+__pycache__/
+*.pyc
+# Ignore editor and OS files
+.vscode/
+*.swp
+.DS_Store

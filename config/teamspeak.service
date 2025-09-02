@@ -1,0 +1,47 @@
+[Unit]
+Description=TeamSpeak 3 Server
+After=network.target systemd-tmpfiles-setup.service systemd-sysusers.service
+Wants=systemd-tmpfiles-setup.service systemd-sysusers.service
+
+[Service]
+Type=simple
+User=teamspeak
+Group=teamspeak
+WorkingDirectory=/opt/teamspeak3-server
+PermissionsStartOnly=yes
+
+# Ensure directories exist with correct permissions before starting
+ExecStartPre=/bin/mkdir -p /var/lib/teamspeak/database /var/lib/teamspeak/logs /var/lib/teamspeak/files
+ExecStartPre=/bin/chown -Rf teamspeak:teamspeak /var/lib/teamspeak/database /var/lib/teamspeak/logs /var/lib/teamspeak/files
+
+## All writable data is stored directly in /var/lib/teamspeak. BindPaths removed for Bootc compatibility.
+
+# Security hardening (optimized for bootc)
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+# Allow writes to persistent data dir and temp dir used by SQLite
+ReadWritePaths=/var/lib/teamspeak
+ReadWritePaths=/var/tmp
+Environment=SQLITE_TMPDIR=/var/tmp
+LimitNOFILE=65536
+
+Environment=TMPDIR=/var/tmp
+ExecStart=/opt/teamspeak3-server/ts3server \
+	inifile=/etc/teamspeak/ts3server.ini \
+	logpath=/var/lib/teamspeak/logs/ \
+	dbplugin=ts3db_sqlite3 \
+	dbpluginparameter=/var/lib/teamspeak/database/ts3server.sqlitedb \
+	dbsqlcreatepath=/opt/teamspeak3-server/sql/create_sqlite/ \
+	dbsqlpath=/opt/teamspeak3-server/sql/
+ExecStop=/bin/kill -TERM $MAINPID
+StandardOutput=journal
+StandardError=journal
+
+# Restart configuration
+RestartSec=5
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
