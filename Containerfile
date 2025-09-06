@@ -25,10 +25,10 @@ RUN dnf update -y && \
     '# TeamSpeak Server System User' \
     'u teamspeak - "TeamSpeak Server" /var/lib/teamspeak /sbin/nologin' \
     > /usr/lib/sysusers.d/99-teamspeak.conf \
-    && wget https://files.teamspeak-services.com/releases/server/${TS3_VERSION}/teamspeak3-server_linux_amd64-${TS3_VERSION}.tar.bz2 \
-    && tar -xjf teamspeak3-server_linux_amd64-${TS3_VERSION}.tar.bz2 \
+    && wget "https://files.teamspeak-services.com/releases/server/${TS3_VERSION}/teamspeak3-server_linux_amd64-${TS3_VERSION}.tar.bz2" \
+    && tar -xjf "teamspeak3-server_linux_amd64-${TS3_VERSION}.tar.bz2" \
     && mv teamspeak3-server_linux_amd64 teamspeak3-server \
-    && rm teamspeak3-server_linux_amd64-3.13.7.tar.bz2 \
+    && rm "teamspeak3-server_linux_amd64-${TS3_VERSION}.tar.bz2" \
     && touch /opt/teamspeak3-server/.ts3server_license_accepted
 
 # Create systemd service file for TeamSpeak
