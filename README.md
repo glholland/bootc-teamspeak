@@ -41,7 +41,7 @@ The overarching goal to this project is to deliver an ISO which can be utilized 
     - Installs TeamSpeak 3.13.7
     - Configures systemd services from `config/teamspeak.service`
     - Creates required directories
-    - Copies `config` to `/etc/teamspeak`, important for `ts3server.ini`
+    - Copies `config/ts3server.ini` to `/etc/teamspeak/ts3server.ini`
 
 ### Deployment Process
 
@@ -68,8 +68,9 @@ The overarching goal to this project is to deliver an ISO which can be utilized 
 - **Immutable Infrastructure**: [Bootc](https://github.com/containers/bootc) container with systemd as PID 1
 - **Persistent Data**: TeamSpeak data in `/var/lib/teamspeak` (survives updates)
 - **User Injection**: SSH keys and credentials via [bootc build config](https://osbuild.org/docs/bootc/#-build-config)
-- **Security**: Hardened systemd service with proper isolation
+- **Security**: Hardened systemd service with `ProtectSystem=strict` and proper isolation
 - **Update Support**: In-place updates via `bootc switch`
+- **OCI Metadata**: Standard `org.opencontainers.image.*` labels on the image
 
 ## 🏗️ Architecture
 
@@ -79,17 +80,23 @@ This is the target directory structure for the Bootc container image:
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Bootc Container Image                        │
 │ ┌─────────────────────────────────────────────────────────────┐ │
-│ │ /opt/teamspeak3-server/ (READ-ONLY)                         │ │
+│ │ /opt/teamspeak3-server/ (READ-ONLY via ProtectSystem)       │ │
 │ │ ├── ts3server (binary)                                      │ │
-│ │ ├── sql/create_sqlite/ (database schemas)                   │ │
-│ │ └── logs/, files/, database/ (read-only, static content)    │ │
+│ │ ├── sql/create_sqlite/ (schema files, auto-resolved)        │ │
+│ │ ├── sql/ (runtime SQL)                                      │ │
+│ │ └── libts3db_*.so (database plugins)                        │ │
 │ └─────────────────────────────────────────────────────────────┘ │
 │ ┌─────────────────────────────────────────────────────────────┐ │
-│ │ /var/lib/teamspeak/ (PERSISTENT, writable)                  │ │
-│ │ ├── logs/ (actual log storage, writable)                    │ │
-│ │ ├── files/ (file transfers, writable)                       │ │
-│ │ └── database/ts3server.sqlitedb (SQLite database, writable) │ │
-│ └─────────────────────────────────────────────────────────-───┘ │
+│ │ /var/lib/teamspeak/ (PERSISTENT, writable — WorkingDir)     │ │
+│ │ ├── database/ts3server.sqlitedb (SQLite database)           │ │
+│ │ ├── logs/ (server log files)                                │ │
+│ │ ├── files/ (file transfers)                                 │ │
+│ │ └── ts3server.pid                                           │ │
+│ └─────────────────────────────────────────────────────────────┘ │
+│ ┌─────────────────────────────────────────────────────────────┐ │
+│ │ /etc/teamspeak/ (configuration, read-only at runtime)       │ │
+│ │ └── ts3server.ini                                           │ │
+│ └─────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -124,13 +131,20 @@ All commands use the unified management script:
 Clean bootc container with:
 
 - TeamSpeak 3.13.7 installation
-- systemd-sysusers for service account
+- systemd-sysusers for service account (runs at build time for `chown`)
 - tmpfiles.d for directory ownership
+- OCI metadata labels
 - `/sbin/init` as PID 1 (proper bootc pattern)
 
 ### `config/teamspeak.service`
 
-Systemd service with direct writable directories for persistent data and security hardening.
+Systemd service with security hardening:
+
+- `ProtectSystem=strict` — entire filesystem is read-only except explicitly allowed paths
+- `ReadWritePaths=/var/lib/teamspeak` — persistent data directory
+- `ReadWritePaths=/var/tmp` — required for SQLite temp files (`SQLITE_TMPDIR`)
+- `WorkingDirectory=/var/lib/teamspeak` — SQLite database is created here
+- `ExecStartPre` runs `configure-teamspeak.sh` for environment-based config
 
 ## 🔧 Deployment Steps
 
@@ -143,11 +157,10 @@ Systemd service with direct writable directories for persistent data and securit
 1. **Access**: SSH `fedora@<vm-ip>` (password: `password`)
 1. **Verify**: `sudo systemctl status teamspeak`
 
-TeamSpeak admin token appears in `/var/lib/teamspeak/logs/ts3server_*.log` on first start.
+TeamSpeak admin token is written to the logs on first start:
 
 ```bash
-VM_ID=103
-qm create $VM_ID --name teamspeak --machine q35 --bios ovmf --scsi0 local-lvm:103,iothreaad=on --efidisk0 local-lvm:1,efitype=4m,pre-enrolled-keys=1 --memory 4096 --cores 4 --net0 virtio,bridge=vmbr0 --cdrom local:iso/$ISO_FILE
+sudo journalctl -u teamspeak | grep token
 ```
 
 ## 🔌 Proxmox VM Creation
@@ -174,21 +187,36 @@ qm create $VM_ID \
 ```
 
 This creates a VM with UEFI boot, virtio-scsi disk, and network connectivity. After creation, start the VM and the automated installation will begin.
-```
-
 
 ## 🧹 File Structure
 
 ```text
 teamspeak/
 ├── Containerfile                   # Bootc container definition
-├── teamspeak-bootc.sh              # Management script
+├── teamspeak-bootc.sh              # Management script (build/test/deploy/clean)
 ├── config/
-│   ├── config.toml                 # Build config with kickstart
-│   ├── teamspeak.service           # Systemd service
-│   └── ts3server.ini               # TeamSpeak configuration
-└── keys/
-    ├── README.md
-    ├── teamspeak-bootc-key
-    └── teamspeak-bootc-key.pub
+│   ├── config.toml                 # Build config with kickstart (installer only)
+│   ├── teamspeak.service           # Systemd service (hardened)
+│   ├── ts3server.ini               # TeamSpeak configuration
+│   └── configure-teamspeak.sh      # Runtime config script (env-var driven)
+├── keys/
+│   ├── teamspeak-bootc-admin       # SSH private key (generated)
+│   └── teamspeak-bootc-admin.pub   # SSH public key (injected via config.toml)
 ```
+
+## ⚠️ Known Gotchas
+
+### TeamSpeak `ts3server.ini` Configuration
+
+- **Do NOT set `dbsqlcreatepath`** in `ts3server.ini`. TeamSpeak resolves the SQL schema path automatically from the binary directory (`/opt/teamspeak3-server/sql/create_sqlite/`). Explicitly setting it — even with the correct absolute path — causes `setSQLfromFile` failures and the server will crash-loop.
+- **`dbpluginparameter`** for the SQLite3 plugin (`ts3db_sqlite3`) is the **raw database file path**, not an INI file. For MariaDB (`ts3db_mariadb`), it points to an INI file with connection details.
+- **`dbsqlpath`** can safely be set to an absolute path and works correctly.
+
+### Build-Time User Creation
+
+- `systemd-sysusers` must be called explicitly in the Containerfile `RUN` layer before any `chown teamspeak:...` commands. The `sysusers.d` drop-in file exists but is not automatically processed during container builds.
+
+### `ProtectSystem=strict` in the Service
+
+- The systemd service uses `ProtectSystem=strict`, which makes `/etc` read-only at runtime. The `configure-teamspeak.sh` script skips writes when values already match to avoid `sed -i` failures on the read-only filesystem. Only environment-variable-driven changes (e.g., switching to MariaDB) trigger writes, and those paths must be in `ReadWritePaths`.
+- SQLite requires a writable temp directory. `SQLITE_TMPDIR=/var/tmp` and `ReadWritePaths=/var/tmp` are set in the service to prevent `unable to open database file` errors.
