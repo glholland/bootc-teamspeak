@@ -16,16 +16,16 @@ timezone America/New_York --utc
 # Network configuration
 network --bootproto=dhcp --device=link --activate --onboot=on --hostname=teamspeak-server
 
-# Storage configuration - use first available disk
-ignoredisk --only-use=sda
-bootloader --location=boot --boot-drive=sda
-zerombr
-clearpart --all --initlabel --disklabel=gpt --drives=sda
+# Storage configuration - use first available VirtIO disk (Proxmox/KVM)
+        ignoredisk --only-use=vda
+        bootloader --location=boot --boot-drive=vda
+        zerombr
+        clearpart --all --initlabel --disklabel=gpt --drives=vda
 
-# Create partitions
-part /boot/efi --fstype=efi --size=512 --ondisk=sda
-part /boot --fstype=ext4 --size=1024 --ondisk=sda
-part pv.01 --size=1 --grow --ondisk=sda
+        # Create partitions
+        part /boot/efi --fstype=efi --size=512 --ondisk=vda
+        part /boot --fstype=ext4 --size=1024 --ondisk=vda
+        part pv.01 --size=1 --grow --ondisk=vda
 
 # LVM configuration
 volgroup system pv.01

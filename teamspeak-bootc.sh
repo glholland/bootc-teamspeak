@@ -7,7 +7,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR"
-IMAGE_NAME="localhost/teamspeak-bootc"
+IMAGE_NAME="harbor.lab.garrettholland.com/lab/teamspeak-bootc"
 CONFIG_FILE="$PROJECT_DIR/config/config.toml"
 
 # Colors for output
@@ -32,7 +32,7 @@ USAGE:
 
 COMMANDS:
     build           Build the bootc container image
-    deploy          Create bootc disk image for deployment
+    deploy          Create bootc disk image for deployment (ISO)
     clean           Remove old images and clean up
     help            Show this help message
 
@@ -196,7 +196,7 @@ cmd_deploy() {
         echo "4. Boot VM - installation will proceed automatically (no interaction needed)"
         echo "5. After auto-reboot: ssh fedora@<vm-ip> (password: password)"
         echo "6. TeamSpeak will be running automatically: sudo systemctl status teamspeak"
-        echo "7. TeamSpeak server admin token will be in: /opt/teamspeak3-server/logs/ts3server_*.log"
+        echo "7. Get the admin token: ssh into the VM and run: sudo journalctl -u teamspeak | grep token"
 
     else
         log_error "Failed to create bootc disk image"
